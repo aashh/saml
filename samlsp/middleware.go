@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"net/http"
+	"strings"
 
 	"github.com/crewjam/saml"
 )
@@ -203,7 +204,7 @@ func (m *Middleware) CreateSessionFromAssertion(w http.ResponseWriter, r *http.R
 		trackedRequest, err := m.RequestTracker.GetTrackedRequest(r, trackedRequestIndex)
 		if err != nil {
 			if err == http.ErrNoCookie && m.ServiceProvider.AllowIDPInitiated {
-				if uri := r.Form.Get("RelayState"); uri != "" {
+				if uri := r.Form.Get("RelayState"); uri != "" && isRelativeURL(uri) {
 					redirectURI = uri
 				}
 			} else {
@@ -226,6 +227,25 @@ func (m *Middleware) CreateSessionFromAssertion(w http.ResponseWriter, r *http.R
 	}
 
 	http.Redirect(w, r, redirectURI, http.StatusFound)
+}
+
+// isRelativeURL returns true if uri is a safe relative URL to redirect to.
+// It rejects absolute URLs, protocol-relative URLs (//evil.com), and
+// other schemes that could be used for open redirect attacks.
+func isRelativeURL(uri string) bool {
+	// Must start with a single slash (path-relative)
+	if !strings.HasPrefix(uri, "/") {
+		return false
+	}
+	// Reject protocol-relative URLs like "//evil.com"
+	if strings.HasPrefix(uri, "//") {
+		return false
+	}
+	// Reject backslash variants that some browsers normalize to forward slashes
+	if strings.HasPrefix(uri, "/\\") {
+		return false
+	}
+	return true
 }
 
 // RequireAttribute returns a middleware function that requires that the

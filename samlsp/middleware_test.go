@@ -497,6 +497,42 @@ func TestMiddlewareRejectsInvalidCookie(t *testing.T) {
 	assert.Check(t, is.Equal("", resp.Header().Get("Set-Cookie")))
 }
 
+func TestIsRelativeURL(t *testing.T) {
+	tests := []struct {
+		uri      string
+		expected bool
+	}{
+		{"/", true},
+		{"/foo", true},
+		{"/foo/bar", true},
+		{"/foo?bar=baz", true},
+		{"/foo#fragment", true},
+
+		// Open redirect vectors
+		{"", false},
+		{"//evil.com", false},
+		{"//evil.com/path", false},
+		{"https://evil.com", false},
+		{"http://evil.com", false},
+		{"javascript:alert(1)", false},
+		{"data:text/html,<script>alert(1)</script>", false},
+		{"ftp://evil.com", false},
+		{"evil.com", false},
+		{"/\\evil.com", false},
+		{"mailto:attacker@evil.com", false},
+
+		// Edge cases
+		{"", false},
+		{" /foo", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.uri, func(t *testing.T) {
+			assert.Check(t, is.Equal(tt.expected, isRelativeURL(tt.uri)),
+				"isRelativeURL(%q) should be %v", tt.uri, tt.expected)
+		})
+	}
+}
+
 func TestMiddlewareHandlesInvalidResponse(t *testing.T) {
 	test := NewMiddlewareTest(t)
 	v := &url.Values{}

@@ -3,10 +3,8 @@ package xmlenc
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"io"
 
 	"github.com/beevik/etree"
 )
@@ -29,7 +27,9 @@ func (e GCM) Algorithm() string {
 	return e.algorithm
 }
 
-// Encrypt encrypts plaintext with key and nonce
+// Encrypt encrypts plaintext with key and nonce.
+// The nonce parameter is optional; if nil, a random nonce is generated.
+// The output format is nonce || ciphertext || tag, matching what Decrypt expects.
 func (e GCM) Encrypt(key interface{}, plaintext []byte, nonce []byte) (*etree.Element, error) {
 	keyBuf, ok := key.([]byte)
 	if !ok {
@@ -58,27 +58,26 @@ func (e GCM) Encrypt(key interface{}, plaintext []byte, nonce []byte) (*etree.El
 	em.CreateAttr("Algorithm", e.algorithm)
 	em.CreateAttr("xmlns:xenc", "http://www.w3.org/2001/04/xmlenc#")
 
-	plaintext = appendPadding(plaintext, block.BlockSize())
-
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
 
 	if nonce == nil {
-		// generate random nonce when it's nil
-		nonce := make([]byte, aesgcm.NonceSize())
-		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-			panic(err.Error())
+		nonce = make([]byte, aesgcm.NonceSize())
+		if _, err := RandReader.Read(nonce); err != nil {
+			return nil, err
 		}
 	}
 
-	ciphertext := make([]byte, len(plaintext))
-	text := aesgcm.Seal(nil, nonce, ciphertext, nil)
+	// GCM Seal returns ciphertext || tag
+	sealed := aesgcm.Seal(nil, nonce, plaintext, nil)
+	// Prepend nonce so Decrypt can extract it: nonce || ciphertext || tag
+	output := append(nonce, sealed...)
 
 	cd := encryptedDataEl.CreateElement("xenc:CipherData")
 	cd.CreateAttr("xmlns:xenc", "http://www.w3.org/2001/04/xmlenc#")
-	cd.CreateElement("xenc:CipherValue").SetText(base64.StdEncoding.EncodeToString(text))
+	cd.CreateElement("xenc:CipherValue").SetText(base64.StdEncoding.EncodeToString(output))
 	return encryptedDataEl, nil
 }
 

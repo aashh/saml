@@ -8,6 +8,7 @@ import (
 
 	"github.com/beevik/etree"
 	"gotest.tools/assert"
+	is "gotest.tools/assert/cmp"
 	"gotest.tools/golden"
 )
 
@@ -43,17 +44,32 @@ func TestCanEncryptOAEP(t *testing.T) {
 		certificate, err := x509.ParseCertificate(b.Bytes)
 		assert.Check(t, err)
 
+		plaintext := golden.Get(t, "plaintext_gcm.xml")
+
 		e := OAEP()
 		e.BlockCipher = AES128GCM
 		e.DigestMethod = &SHA1
 
-		el, err := e.Encrypt(certificate, golden.Get(t, "plaintext_gcm.xml"), []byte("1234567890AZ"))
+		el, err := e.Encrypt(certificate, plaintext, []byte("1234567890AZ"))
 		assert.Check(t, err)
 
 		doc := etree.NewDocument()
 		doc.SetRoot(el)
 		doc.Indent(4)
-		ciphertext, _ := doc.WriteToString()
-		golden.Assert(t, ciphertext, "ciphertext_gcm.xml")
+		ciphertextStr, _ := doc.WriteToString()
+		golden.Assert(t, ciphertextStr, "ciphertext_gcm.xml")
+
+		// Round-trip: decrypt and verify we get the original plaintext
+		keyBlock, _ := pem.Decode(golden.Get(t, "cert.key"))
+		privKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+		assert.Check(t, err)
+
+		doc2 := etree.NewDocument()
+		err = doc2.ReadFromString(ciphertextStr)
+		assert.Check(t, err)
+
+		decrypted, err := Decrypt(privKey, doc2.Root())
+		assert.Check(t, err)
+		assert.Check(t, is.DeepEqual(plaintext, decrypted))
 	})
 }

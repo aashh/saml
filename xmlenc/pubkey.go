@@ -121,17 +121,17 @@ func (e RSA) Decrypt(key interface{}, ciphertextEl *etree.Element) ([]byte, erro
 	return e.keyDecrypter(e, rsaKey, ciphertext)
 }
 
-// OAEP returns a version of RSA that implements RSA in OAEP-MGF1P mode. By default
-// the block cipher used is AES-256 CBC and the digest method is SHA-256. You can
-// specify other ciphers and digest methods by assigning to BlockCipher or
-// DigestMethod.
+// OAEP returns a version of RSA that implements RSA in OAEP-MGF1P mode. The block
+// cipher used is AES-256 CBC.
 //
-// OAEP implements the older RSA-OAEP (2001 spec) for backward compatibility, you might
-// perfer OAEP_2009_256 over using this method.
+// Per the XML Encryption 2001 spec, the rsa-oaep-mgf1p algorithm uses MGF1 with
+// SHA-1 as a fixed mask generation function. The DigestMethod (label hash) is also
+// SHA-1 by default. If you need SHA-256 for both the digest and MGF, use
+// OAEP_SHA256() which uses the 2009 URI where the MGF hash matches DigestMethod.
 func OAEP() RSA {
 	return RSA{
 		BlockCipher:  AES256CBC,
-		DigestMethod: SHA256,
+		DigestMethod: SHA1,
 		algorithm:    "http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p",
 		keyEncrypter: func(e RSA, pubKey *rsa.PublicKey, plaintext []byte) ([]byte, error) {
 			return rsa.EncryptOAEP(e.DigestMethod.Hash(), RandReader, pubKey, plaintext, nil)

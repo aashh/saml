@@ -110,6 +110,23 @@ type IdentityProvider struct {
 	SignatureMethod         string
 	ValidDuration           *time.Duration
 	ResponseFormTemplate    *template.Template
+
+	// Encryptor, if set, specifies the RSA encryptor used to encrypt
+	// assertions. If nil, OAEP with AES-256-CBC and SHA-1 is used
+	// (per the rsa-oaep-mgf1p spec, MGF1-SHA1 is the fixed MGF).
+	// For SHA-256 digest and MGF, use xmlenc.OAEP_SHA256() instead:
+	//
+	//   e := xmlenc.OAEP_SHA256()
+	//   idp.Encryptor = &e
+	Encryptor *xmlenc.RSA
+}
+
+// encryptor returns the configured encryptor or the default (OAEP with AES-256-CBC + SHA-1).
+func (idp *IdentityProvider) encryptor() xmlenc.RSA {
+	if idp.Encryptor != nil {
+		return *idp.Encryptor
+	}
+	return xmlenc.OAEP()
 }
 
 // Metadata returns the metadata structure for this identity provider.
@@ -888,10 +905,7 @@ func (req *IdpAuthnRequest) MakeAssertionEl() error {
 		}
 	}
 
-	encryptor := xmlenc.OAEP()
-	encryptor.BlockCipher = xmlenc.AES128CBC
-	encryptor.DigestMethod = &xmlenc.SHA1
-	encryptedDataEl, err := encryptor.Encrypt(certBuf, signedAssertionBuf, nil)
+	encryptedDataEl, err := req.IDP.encryptor().Encrypt(certBuf, signedAssertionBuf, nil)
 	if err != nil {
 		return err
 	}

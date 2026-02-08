@@ -1234,6 +1234,27 @@ func TestSPInvalidAssertions(t *testing.T) {
 	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{}
 	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
 	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// non-bearer SubjectConfirmation method should be skipped
+	assertion.Subject.SubjectConfirmations[0].Method = "urn:oasis:names:tc:SAML:2.0:cm:holder-of-key"
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion has no bearer SubjectConfirmation"))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// empty method should be rejected
+	assertion.Subject.SubjectConfirmations[0].Method = ""
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion has no bearer SubjectConfirmation"))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// bearer method should work (positive confirmation)
+	assertion.Subject.SubjectConfirmations[0].Method = "urn:oasis:names:tc:SAML:2.0:cm:bearer"
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
 }
 
 func TestXswPermutationOneIsRejected(t *testing.T) {

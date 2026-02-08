@@ -1185,7 +1185,14 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	if assertion.Issuer.Value != sp.IDPMetadata.EntityID {
 		return fmt.Errorf("issuer is not %q", sp.IDPMetadata.EntityID)
 	}
+	bearerFound := false
 	for _, subjectConfirmation := range assertion.Subject.SubjectConfirmations {
+		// Only process bearer subject confirmations per SAML 2.0 Web Browser SSO Profile.
+		// Other methods (e.g. holder-of-key) are not supported and should be skipped.
+		if subjectConfirmation.Method != "urn:oasis:names:tc:SAML:2.0:cm:bearer" {
+			continue
+		}
+
 		requestIDvalid := false
 
 		// We *DO NOT* validate InResponseTo when AllowIDPInitiated is set. Here's why:
@@ -1222,6 +1229,10 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 		if subjectConfirmation.SubjectConfirmationData.NotOnOrAfter.Add(MaxClockSkew).Before(now) {
 			return fmt.Errorf("assertion SubjectConfirmationData is expired")
 		}
+		bearerFound = true
+	}
+	if !bearerFound {
+		return fmt.Errorf("assertion has no bearer SubjectConfirmation")
 	}
 	if assertion.Conditions.NotBefore.Add(-MaxClockSkew).After(now) {
 		return fmt.Errorf("assertion Conditions is not yet valid")

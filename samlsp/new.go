@@ -35,6 +35,20 @@ type Options struct {
 	CookieName            string
 	RelayStateFunc        func(w http.ResponseWriter, r *http.Request) string
 	LogoutBindings        []string
+
+	// SessionKey, if set, is used to sign session JWTs and tracked
+	// request JWTs instead of Key. This allows separation between the
+	// SAML signing key (shared with the IdP) and the session signing
+	// key (internal to this SP). If nil, Key is used for both.
+	SessionKey crypto.Signer
+}
+
+// sessionKey returns the key used for signing session and tracked request JWTs.
+func sessionKey(opts Options) crypto.Signer {
+	if opts.SessionKey != nil {
+		return opts.SessionKey
+	}
+	return opts.Key
 }
 
 func getDefaultSigningMethod(signer crypto.Signer) jwt.SigningMethod {
@@ -52,12 +66,13 @@ func getDefaultSigningMethod(signer crypto.Signer) jwt.SigningMethod {
 // DefaultSessionCodec returns the default SessionCodec for the provided options,
 // a JWTSessionCodec configured to issue signed tokens.
 func DefaultSessionCodec(opts Options) JWTSessionCodec {
+	key := sessionKey(opts)
 	return JWTSessionCodec{
-		SigningMethod: getDefaultSigningMethod(opts.Key),
+		SigningMethod: getDefaultSigningMethod(key),
 		Audience:      opts.URL.String(),
 		Issuer:        opts.URL.String(),
 		MaxAge:        defaultSessionMaxAge,
-		Key:           opts.Key,
+		Key:           key,
 	}
 }
 
@@ -82,12 +97,13 @@ func DefaultSessionProvider(opts Options) CookieSessionProvider {
 // DefaultTrackedRequestCodec returns a new TrackedRequestCodec for the provided
 // options, a JWTTrackedRequestCodec that uses a JWT to encode TrackedRequests.
 func DefaultTrackedRequestCodec(opts Options) JWTTrackedRequestCodec {
+	key := sessionKey(opts)
 	return JWTTrackedRequestCodec{
-		SigningMethod: getDefaultSigningMethod(opts.Key),
+		SigningMethod: getDefaultSigningMethod(key),
 		Audience:      opts.URL.String(),
 		Issuer:        opts.URL.String(),
 		MaxAge:        saml.MaxIssueDelay,
-		Key:           opts.Key,
+		Key:           key,
 	}
 }
 

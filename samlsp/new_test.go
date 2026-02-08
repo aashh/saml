@@ -1,6 +1,11 @@
 package samlsp
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
 	"testing"
 
 	"gotest.tools/assert"
@@ -30,4 +35,35 @@ func TestNewCanAcceptCookieName(t *testing.T) {
 		})
 	}
 
+}
+
+func TestSessionKeyFallsBackToKey(t *testing.T) {
+	samlKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	assert.Assert(t, err)
+
+	opts := Options{
+		Key: samlKey,
+	}
+	codec := DefaultSessionCodec(opts)
+	assert.Equal(t, crypto.Signer(samlKey), codec.Key)
+
+	tracker := DefaultTrackedRequestCodec(opts)
+	assert.Equal(t, crypto.Signer(samlKey), tracker.Key)
+}
+
+func TestSessionKeyUsesSessionKeyWhenSet(t *testing.T) {
+	samlKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	assert.Assert(t, err)
+	sessKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.Assert(t, err)
+
+	opts := Options{
+		Key:        samlKey,
+		SessionKey: sessKey,
+	}
+	codec := DefaultSessionCodec(opts)
+	assert.Equal(t, crypto.Signer(sessKey), codec.Key)
+
+	tracker := DefaultTrackedRequestCodec(opts)
+	assert.Equal(t, crypto.Signer(sessKey), tracker.Key)
 }

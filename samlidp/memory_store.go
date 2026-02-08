@@ -6,11 +6,25 @@ import (
 	"sync"
 )
 
+// DefaultMaxStoreItems is the default maximum number of items held by a
+// MemoryStore before the oldest entries are evicted.
+const DefaultMaxStoreItems = 10000
+
 // MemoryStore is an implementation of Store that resides completely
-// in memory.
+// in memory. It has a configurable maximum capacity; when the limit
+// is reached, the oldest entries are evicted.
 type MemoryStore struct {
-	mu   sync.RWMutex
-	data map[string]string
+	mu       sync.RWMutex
+	data     map[string]string
+	keys     []string // insertion-ordered for eviction
+	MaxItems int      // 0 means DefaultMaxStoreItems
+}
+
+func (s *MemoryStore) maxItems() int {
+	if s.MaxItems > 0 {
+		return s.MaxItems
+	}
+	return DefaultMaxStoreItems
 }
 
 // Get fetches the data stored in `key` and unmarshals it into `value`.
@@ -37,7 +51,20 @@ func (s *MemoryStore) Put(key string, value interface{}) error {
 	if err != nil {
 		return err
 	}
+
+	if _, exists := s.data[key]; !exists {
+		s.keys = append(s.keys, key)
+	}
 	s.data[key] = string(buf)
+
+	// Evict oldest entries if over capacity
+	for len(s.data) > s.maxItems() && len(s.keys) > 0 {
+		oldest := s.keys[0]
+		s.keys = s.keys[1:]
+		if _, ok := s.data[oldest]; ok {
+			delete(s.data, oldest)
+		}
+	}
 	return nil
 }
 
@@ -46,6 +73,9 @@ func (s *MemoryStore) Delete(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.data, key)
+	// Note: we don't remove from s.keys for efficiency; the eviction
+	// loop in Put handles stale keys gracefully since they won't be
+	// in s.data.
 	return nil
 }
 

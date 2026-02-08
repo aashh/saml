@@ -409,7 +409,7 @@ func TestMiddlewareCanParseResponse(t *testing.T) {
 	assert.Check(t, is.DeepEqual([]string{
 		"saml_KCosLjAyNDY4Ojw-QEJERkhKTE5QUlRWWFpcXmBiZGZoamxucHJ0dnh6=; Path=/saml2/acs; Domain=15661444.ngrok.io; Expires=Thu, 01 Jan 1970 00:00:01 GMT",
 		"ttt=" + test.expectedSessionCookie + "; " +
-			"Path=/; Domain=15661444.ngrok.io; Max-Age=7200; HttpOnly; Secure",
+			"Path=/; Max-Age=7200; HttpOnly; Secure",
 	},
 		resp.Header()["Set-Cookie"]))
 }
@@ -427,14 +427,31 @@ func TestMiddlewareDefaultCookieDomainIPv4(t *testing.T) {
 	resp := httptest.NewRecorder()
 	assert.Check(t, sp.CreateSession(resp, req, &saml.Assertion{}))
 
+	// By default, Domain is not set (host-only cookie). Verify no Domain attribute is present.
 	assert.Check(t,
-		strings.Contains(resp.Header().Get("Set-Cookie"), "Domain=127.0.0.1;"),
-		"Cookie domain must not contain a port or the cookie cannot be set properly: %v", resp.Header().Get("Set-Cookie"))
+		!strings.Contains(resp.Header().Get("Set-Cookie"), "Domain="),
+		"Cookie should not have a Domain attribute by default (host-only): %v", resp.Header().Get("Set-Cookie"))
+}
+
+func TestMiddlewareCookieDomainExplicit(t *testing.T) {
+	test := NewMiddlewareTest(t)
+
+	sp := DefaultSessionProvider(Options{
+		URL:          mustParseURL("https://app.example.com"),
+		Key:          test.Key,
+		CookieDomain: "example.com",
+	})
+
+	req, _ := http.NewRequest("GET", "/", nil)
+	resp := httptest.NewRecorder()
+	assert.Check(t, sp.CreateSession(resp, req, &saml.Assertion{}))
+
+	assert.Check(t,
+		strings.Contains(resp.Header().Get("Set-Cookie"), "Domain=example.com;"),
+		"Cookie should have explicit Domain when CookieDomain is set: %v", resp.Header().Get("Set-Cookie"))
 }
 
 func TestMiddlewareDefaultCookieDomainIPv6(t *testing.T) {
-	t.Skip("fails") // TODO(ross): fix this test
-
 	test := NewMiddlewareTest(t)
 
 	sp := DefaultSessionProvider(Options{
@@ -446,9 +463,10 @@ func TestMiddlewareDefaultCookieDomainIPv6(t *testing.T) {
 	resp := httptest.NewRecorder()
 	assert.Check(t, sp.CreateSession(resp, req, &saml.Assertion{}))
 
+	// By default, Domain is not set (host-only cookie). No Domain attribute should be present.
 	assert.Check(t,
-		strings.Contains(resp.Header().Get("Set-Cookie"), "Domain=::1;"),
-		"Cookie domain must not contain a port or the cookie cannot be set properly: %v", resp.Header().Get("Set-Cookie"))
+		!strings.Contains(resp.Header().Get("Set-Cookie"), "Domain="),
+		"Cookie should not have a Domain attribute by default (host-only): %v", resp.Header().Get("Set-Cookie"))
 }
 
 func TestMiddlewareRejectsInvalidRelayState(t *testing.T) {

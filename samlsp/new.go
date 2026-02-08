@@ -33,6 +33,11 @@ type Options struct {
 	RequestedAuthnContext *saml.RequestedAuthnContext
 	CookieSameSite        http.SameSite
 	CookieName            string
+	// CookieDomain sets the Domain attribute on session cookies. When
+	// empty (the default), the cookie uses "Host Only" scope — it is
+	// sent only to the exact host that set it. Set this only when you
+	// need the cookie shared across subdomains.
+	CookieDomain          string
 	RelayStateFunc        func(w http.ResponseWriter, r *http.Request) string
 	LogoutBindings        []string
 }
@@ -70,7 +75,7 @@ func DefaultSessionProvider(opts Options) CookieSessionProvider {
 	}
 	return CookieSessionProvider{
 		Name:     cookieName,
-		Domain:   opts.URL.Host,
+		Domain:   opts.CookieDomain,
 		MaxAge:   defaultSessionMaxAge,
 		HTTPOnly: true,
 		Secure:   opts.URL.Scheme == "https",

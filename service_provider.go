@@ -159,6 +159,12 @@ type ServiceProvider struct {
 	// ValidateRequestID allows you to override the default request ID validation.
 	// If nil, the default request ID validation is used.
 	ValidateRequestID func(response Response, possibleRequestIDs []string) error
+
+	// IgnoreOneTimeUse, if true, allows assertions that carry a OneTimeUse
+	// condition to be accepted without enforcement. By default (false),
+	// assertions with OneTimeUse are rejected because this library does not
+	// have a replay cache to enforce the constraint.
+	IgnoreOneTimeUse bool
 }
 
 // MaxIssueDelay is the longest allowed time between when a SAML assertion is
@@ -1233,6 +1239,14 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	if err := sp.validateAudienceRestriction(assertion); err != nil {
 		return err
 	}
+
+	if assertion.Conditions.OneTimeUse != nil && !sp.IgnoreOneTimeUse {
+		return fmt.Errorf("assertion Conditions include OneTimeUse which cannot be enforced without a replay cache")
+	}
+	if assertion.Conditions.ProxyRestriction != nil {
+		return fmt.Errorf("assertion Conditions include ProxyRestriction which is not supported")
+	}
+
 	return nil
 }
 

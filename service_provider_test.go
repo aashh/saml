@@ -1234,6 +1234,39 @@ func TestSPInvalidAssertions(t *testing.T) {
 	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{}
 	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
 	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// OneTimeUse condition present => rejected (no replay cache)
+	assertion.Conditions.OneTimeUse = &OneTimeUse{}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion Conditions include OneTimeUse which cannot be enforced without a replay cache"))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// OneTimeUse condition absent => accepted
+	assertion.Conditions.OneTimeUse = nil
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// OneTimeUse with IgnoreOneTimeUse=true => accepted
+	assertion.Conditions.OneTimeUse = &OneTimeUse{}
+	s.IgnoreOneTimeUse = true
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	s.IgnoreOneTimeUse = false
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// ProxyRestriction condition present => rejected
+	proxyCount := 1
+	assertion.Conditions.ProxyRestriction = &ProxyRestriction{Count: &proxyCount}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion Conditions include ProxyRestriction which is not supported"))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
 }
 
 func TestXswPermutationOneIsRejected(t *testing.T) {

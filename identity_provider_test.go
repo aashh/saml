@@ -199,9 +199,9 @@ func TestIDPCanProduceMetadata(t *testing.T) {
 									},
 								},
 								EncryptionMethods: []EncryptionMethod{
-									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc"},
-									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes192-cbc"},
 									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes256-cbc"},
+									{Algorithm: "http://www.w3.org/2009/xmlenc11#aes128-gcm"},
+									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc"},
 									{Algorithm: "http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p"},
 								},
 							},
@@ -1151,4 +1151,58 @@ func TestIDPHTTPCanHandleSSORequest(t *testing.T) {
 		test.IDP.Handler().ServeHTTP(w, r)
 		assert.Check(t, is.Equal(http.StatusBadRequest, w.Code))
 	}
+}
+
+func TestIDPCustomEncryptor(t *testing.T) {
+	// Regression test for issue #20: The Encryptor field on IdentityProvider
+	// allows callers to configure encryption algorithms. Here we set AES128-CBC
+	// with SHA-1 digest instead of the default AES256-CBC/SHA-256, and verify
+	// the encrypted output uses the configured algorithms.
+	test := NewIdentityProviderTest(t, applyKey)
+
+	customEncryptor := xmlenc.OAEP()
+	customEncryptor.BlockCipher = xmlenc.AES128CBC
+	customEncryptor.DigestMethod = &xmlenc.SHA1
+	test.IDP.Encryptor = &customEncryptor
+
+	req := IdpAuthnRequest{
+		Now: TimeNow(),
+		IDP: &test.IDP,
+		RequestBuffer: []byte("" +
+			"<AuthnRequest xmlns=\"urn:oasis:names:tc:SAML:2.0:protocol\" " +
+			"  AssertionConsumerServiceURL=\"https://sp.example.com/saml2/acs\" " +
+			"  Destination=\"https://idp.example.com/saml/sso\" " +
+			"  ID=\"id-00020406080a0c0e10121416181a1c1e\" " +
+			"  IssueInstant=\"2015-12-01T01:57:09Z\" ProtocolBinding=\"\" " +
+			"  Version=\"2.0\">" +
+			"  <Issuer xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\" " +
+			"    Format=\"urn:oasis:names:tc:SAML:2.0:nameid-format:entity\">https://sp.example.com/saml2/metadata</Issuer>" +
+			"  <NameIDPolicy xmlns=\"urn:oasis:names:tc:SAML:2.0:protocol\" " +
+			"    AllowCreate=\"true\">urn:oasis:names:tc:SAML:2.0:nameid-format:transient</NameIDPolicy>" +
+			"</AuthnRequest>"),
+	}
+	req.HTTPRequest, _ = http.NewRequest("POST", "http://idp.example.com/saml/sso", nil)
+	err := req.Validate()
+	assert.Check(t, err)
+	err = DefaultAssertionMaker{}.MakeAssertion(&req, &Session{
+		ID:       "f00df00df00d",
+		UserName: "alice",
+	})
+	assert.Check(t, err)
+	err = req.MakeAssertionEl()
+	assert.Check(t, err)
+
+	// Verify the EncryptionMethod Algorithm uses AES128-CBC (not the default AES256-CBC)
+	doc := etree.NewDocument()
+	doc.SetRoot(req.AssertionEl)
+	encMethod := doc.FindElement("//EncryptedAssertion/EncryptedData/EncryptionMethod")
+	assert.Check(t, encMethod != nil)
+	algo := encMethod.SelectAttrValue("Algorithm", "")
+	assert.Check(t, is.Equal("http://www.w3.org/2001/04/xmlenc#aes128-cbc", algo))
+
+	// Decrypt and verify the plaintext is a valid assertion
+	el := doc.FindElement("//EncryptedAssertion/EncryptedData")
+	plaintext, err := xmlenc.Decrypt(test.SPKey, el)
+	assert.Check(t, err)
+	assert.Check(t, strings.Contains(string(plaintext), "<saml:Assertion"))
 }

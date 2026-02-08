@@ -110,6 +110,23 @@ type IdentityProvider struct {
 	SignatureMethod         string
 	ValidDuration           *time.Duration
 	ResponseFormTemplate    *template.Template
+
+	// Encryptor, if set, specifies the RSA encryptor used to encrypt
+	// assertions. If nil, OAEP with AES-256-CBC and SHA-256 is used.
+	// To use different algorithms, set this to a configured xmlenc.RSA:
+	//
+	//   e := xmlenc.OAEP()
+	//   e.BlockCipher = xmlenc.AES128CBC
+	//   idp.Encryptor = &e
+	Encryptor *xmlenc.RSA
+}
+
+// encryptor returns the configured encryptor or the default (OAEP with AES-256-CBC + SHA-256).
+func (idp *IdentityProvider) encryptor() xmlenc.RSA {
+	if idp.Encryptor != nil {
+		return *idp.Encryptor
+	}
+	return xmlenc.OAEP()
 }
 
 // Metadata returns the metadata structure for this identity provider.
@@ -153,9 +170,9 @@ func (idp *IdentityProvider) Metadata() *EntityDescriptor {
 									},
 								},
 								EncryptionMethods: []EncryptionMethod{
-									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc"},
-									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes192-cbc"},
 									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes256-cbc"},
+									{Algorithm: "http://www.w3.org/2009/xmlenc11#aes128-gcm"},
+									{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc"},
 									{Algorithm: "http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p"},
 								},
 							},
@@ -888,9 +905,7 @@ func (req *IdpAuthnRequest) MakeAssertionEl() error {
 		}
 	}
 
-	encryptor := xmlenc.OAEP()
-	encryptor.BlockCipher = xmlenc.AES128CBC
-	encryptor.DigestMethod = &xmlenc.SHA1
+	encryptor := req.IDP.encryptor()
 	encryptedDataEl, err := encryptor.Encrypt(certBuf, signedAssertionBuf, nil)
 	if err != nil {
 		return err

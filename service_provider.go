@@ -1247,8 +1247,10 @@ func (sp *ServiceProvider) validateAudienceRestriction(assertion *Assertion) err
 	audienceRestrictionsValid := len(assertion.Conditions.AudienceRestrictions) == 0
 	audience := firstSet(sp.EntityID, sp.MetadataURL.String())
 	for _, audienceRestriction := range assertion.Conditions.AudienceRestrictions {
-		if audienceRestriction.Audience.Value == audience {
-			audienceRestrictionsValid = true
+		for _, aud := range audienceRestriction.Audiences {
+			if aud.Value == audience {
+				audienceRestrictionsValid = true
+			}
 		}
 	}
 	if !audienceRestrictionsValid {

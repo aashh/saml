@@ -1224,7 +1224,7 @@ func TestSPInvalidAssertions(t *testing.T) {
 	assertion = Assertion{}
 	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
 
-	assertion.Conditions.AudienceRestrictions[0].Audience.Value = "not/our/metadata/url"
+	assertion.Conditions.AudienceRestrictions[0].Audiences[0].Value = "not/our/metadata/url"
 	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
 	assert.Check(t, is.Error(err, "assertion Conditions AudienceRestriction does not contain \"https://15661444.ngrok.io/saml2/metadata\""))
 	assertion = Assertion{}
@@ -1234,6 +1234,44 @@ func TestSPInvalidAssertions(t *testing.T) {
 	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{}
 	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
 	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// Multiple audiences: SP's audience is first
+	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{
+		{Audiences: []Audience{
+			{Value: "https://15661444.ngrok.io/saml2/metadata"},
+			{Value: "https://other.example.com/metadata"},
+		}},
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// Multiple audiences: SP's audience is last
+	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{
+		{Audiences: []Audience{
+			{Value: "https://other.example.com/metadata"},
+			{Value: "https://15661444.ngrok.io/saml2/metadata"},
+		}},
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// Multiple audiences: SP's audience is missing — rejected
+	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{
+		{Audiences: []Audience{
+			{Value: "https://other.example.com/metadata"},
+			{Value: "https://another.example.com/metadata"},
+		}},
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion Conditions AudienceRestriction does not contain \"https://15661444.ngrok.io/saml2/metadata\""))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
 }
 
 func TestXswPermutationOneIsRejected(t *testing.T) {

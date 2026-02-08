@@ -985,17 +985,22 @@ const (
 // signature on the assertion, and verifying that the specified conditions
 // and properties are met.
 func (sp *ServiceProvider) parseResponse(responseEl *etree.Element, possibleRequestIDs []string, now time.Time, signatureRequirement signatureRequirement, currentURL url.URL) (*Assertion, error) {
-	var responseSignatureErr error
 	var responseHasSignature bool
 	if signatureRequirement == signatureRequired {
-		responseSignatureErr = sp.validateSignature(responseEl)
-		if responseSignatureErr != errSignatureElementNotPresent {
+		responseSignatureErr := sp.validateSignature(responseEl)
+		switch responseSignatureErr {
+		case nil:
 			responseHasSignature = true
+			// since the response has a valid signature, assertions don't need one
+			signatureRequirement = signatureNotRequired
+		case errSignatureElementNotPresent:
+			// the response has no signature, so assertions must be signed
+			responseHasSignature = false
+		default:
+			// signature is present but invalid — reject immediately to avoid
+			// leaking timing information about subsequent validation steps
+			return nil, responseSignatureErr
 		}
-
-		// Note: we're deferring taking action on the signature validation until after we've
-		// processed the request attributes, because certain test cases seem to require this mis-feature.
-		// TODO(ross): adjust the test cases so that we can abort here if the Response signature is invalid.
 	}
 
 	// validate request attributes
@@ -1027,19 +1032,6 @@ func (sp *ServiceProvider) parseResponse(responseEl *etree.Element, possibleRequ
 		}
 		if response.Status.StatusCode.Value != StatusSuccess {
 			return nil, ErrBadStatus{Status: response.Status.StatusCode.Value}
-		}
-	}
-
-	if signatureRequirement == signatureRequired {
-		switch responseSignatureErr {
-		case nil:
-			// since the request has a signature, none of the Assertions need one
-			signatureRequirement = signatureNotRequired
-		case errSignatureElementNotPresent:
-			// the request has no signature, so assertions must be signed
-			signatureRequirement = signatureRequired // nop
-		default:
-			return nil, responseSignatureErr
 		}
 	}
 

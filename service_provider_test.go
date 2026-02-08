@@ -1078,8 +1078,10 @@ func TestServiceProviderMissingDestinationWithSignaturePresent(t *testing.T) {
 	bytes, _ := removeDestinationFromDocument(addSignatureToDocument(test.responseDom(t))).WriteToBytes()
 	req.PostForm.Set("SAMLResponse", base64.StdEncoding.EncodeToString(bytes))
 	_, err = s.ParseResponse(&req, []string{"id-9e61753d64e928af5a7a341a97f420c9"})
+	// The invalid signature is now rejected before checking Destination,
+	// closing the timing oracle that previously leaked Destination validity.
 	assert.Check(t, is.Error(err.(*InvalidResponseError).PrivateErr,
-		"`Destination` does not match requested URL or AcsURL (destination \"\", requested \"https://15661444.ngrok.io/saml2/acs\", acs \"https://15661444.ngrok.io/saml2/acs\")"))
+		"cannot validate signature on Response: Invalid Signature"))
 }
 
 func TestSPMismatchedDestinationsWithSignaturePresent(t *testing.T) {
@@ -1099,8 +1101,10 @@ func TestSPMismatchedDestinationsWithSignaturePresent(t *testing.T) {
 	bytes, _ := addSignatureToDocument(test.responseDom(t)).WriteToBytes()
 	req.PostForm.Set("SAMLResponse", base64.StdEncoding.EncodeToString(bytes))
 	_, err = s.ParseResponse(&req, []string{"id-9e61753d64e928af5a7a341a97f420c9"})
+	// The invalid signature is now rejected before checking Destination,
+	// closing the timing oracle that previously leaked Destination validity.
 	assert.Check(t, is.Error(err.(*InvalidResponseError).PrivateErr,
-		"`Destination` does not match requested URL or AcsURL (destination \"https://wrong/saml2/acs\", requested \"https://15661444.ngrok.io/saml2/acs\", acs \"https://15661444.ngrok.io/saml2/acs\")"))
+		"cannot validate signature on Response: Invalid Signature"))
 }
 
 func TestSPMismatchedDestinationsWithNoSignaturePresent(t *testing.T) {
@@ -1141,8 +1145,10 @@ func TestSPMissingDestinationWithSignaturePresent(t *testing.T) {
 	bytes, _ := addSignatureToDocument(test.responseDom(t)).WriteToBytes()
 	req.PostForm.Set("SAMLResponse", base64.StdEncoding.EncodeToString(bytes))
 	_, err = s.ParseResponse(&req, []string{"id-9e61753d64e928af5a7a341a97f420c9"})
+	// The invalid signature is now rejected before checking Destination,
+	// closing the timing oracle that previously leaked Destination validity.
 	assert.Check(t, is.Error(err.(*InvalidResponseError).PrivateErr,
-		"`Destination` does not match requested URL or AcsURL (destination \"\", requested \"https://15661444.ngrok.io/saml2/acs\", acs \"https://15661444.ngrok.io/saml2/acs\")"))
+		"cannot validate signature on Response: Invalid Signature"))
 }
 
 func TestSPInvalidAssertions(t *testing.T) {

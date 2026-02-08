@@ -1,6 +1,7 @@
 package xmlenc
 
 import (
+	"bytes"
 	"math/rand"
 	"os"
 	"testing"
@@ -69,6 +70,46 @@ func TestDataAES128(t *testing.T) {
 			assert.Check(t, err)
 		}
 	})
+}
+
+func TestStripPaddingConstantTimeErrors(t *testing.T) {
+	// All invalid padding scenarios should return the same error
+	// to prevent padding oracle attacks.
+	testCases := []struct {
+		name string
+		buf  []byte
+	}{
+		{"empty buffer", []byte{}},
+		{"padding byte zero", []byte{0x41, 0x41, 0x00}},
+		{"padding byte too large", []byte{0x41, 0x05}},
+		{"single byte zero padding", []byte{0x00}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := stripPadding(tc.buf)
+			assert.Check(t, err != nil, "should reject invalid padding")
+			assert.Check(t, is.Equal(errInvalidPadding.Error(), err.Error()),
+				"all padding errors should return the same generic message")
+		})
+	}
+
+	// Valid padding should succeed
+	validCases := []struct {
+		name     string
+		buf      []byte
+		expected []byte
+	}{
+		{"single byte pad 1", []byte{0x41, 0x01}, []byte{0x41}},
+		{"two byte pad", []byte{0x41, 0x42, 0x02, 0x02}, []byte{0x41, 0x42}},
+		{"full block pad", append(bytes.Repeat([]byte{0x41}, 12), bytes.Repeat([]byte{0x04}, 4)...), bytes.Repeat([]byte{0x41}, 12)},
+	}
+	for _, tc := range validCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := stripPadding(tc.buf)
+			assert.Check(t, err)
+			assert.Check(t, is.DeepEqual(tc.expected, result))
+		})
+	}
 }
 
 /*

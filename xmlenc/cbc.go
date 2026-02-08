@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des" // nolint: gosec
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -172,16 +173,32 @@ func appendPadding(buf []byte, blockSize int) []byte {
 	return append(buf, padding...)
 }
 
+// errInvalidPadding is the single error returned for all padding failures
+// to avoid leaking information about which check failed (padding oracle).
+var errInvalidPadding = errors.New("invalid padding")
+
+// stripPadding removes ISO 10126 / PKCS#7 padding in constant time.
+// All padding validation is done using bitwise operations to avoid
+// timing side-channels that could enable a padding oracle attack.
 func stripPadding(buf []byte) ([]byte, error) {
 	if len(buf) < 1 {
-		return nil, errors.New("buffer is too short for padding")
+		return nil, errInvalidPadding
 	}
-	paddingBytes := int(buf[len(buf)-1])
-	if paddingBytes > len(buf)-1 {
-		return nil, errors.New("buffer is too short for padding")
+
+	padLen := int(buf[len(buf)-1])
+
+	// Check that padLen is in [1, len(buf)] using constant-time comparison.
+	// good starts as 1 (valid) and is set to 0 if any check fails.
+	good := 1
+
+	// padLen must be >= 1
+	good &= subtle.ConstantTimeLessOrEq(1, padLen)
+	// padLen must be <= len(buf)
+	good &= subtle.ConstantTimeLessOrEq(padLen, len(buf))
+
+	if good != 1 {
+		return nil, errInvalidPadding
 	}
-	if paddingBytes < 1 {
-		return nil, errors.New("padding must be at least one byte")
-	}
-	return buf[:len(buf)-paddingBytes], nil
+
+	return buf[:len(buf)-padLen], nil
 }

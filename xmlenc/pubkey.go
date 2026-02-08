@@ -199,5 +199,8 @@ func PKCS1v15() RSA {
 
 func init() {
 	RegisterDecrypter(OAEP())
-	RegisterDecrypter(PKCS1v15())
+	// Note: PKCS1v15 is NOT registered by default because RSA-PKCS1v1.5 is
+	// vulnerable to Bleichenbacher's adaptive chosen-ciphertext attack.
+	// Users who need PKCS1v15 for legacy interoperability can register it
+	// explicitly: xmlenc.RegisterDecrypter(xmlenc.PKCS1v15())
 }

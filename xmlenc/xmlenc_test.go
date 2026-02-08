@@ -71,6 +71,24 @@ func TestDataAES128(t *testing.T) {
 	})
 }
 
+func TestPKCS1v15NotRegisteredByDefault(t *testing.T) {
+	pkcs1v15Algorithm := "http://www.w3.org/2001/04/xmlenc#rsa-1_5"
+
+	// Verify PKCS1v15 is NOT in the default decrypter registry
+	_, registered := decrypters[pkcs1v15Algorithm]
+	assert.Check(t, !registered,
+		"PKCS1v15 should not be registered by default (Bleichenbacher vulnerability)")
+
+	// Verify it CAN be explicitly registered for legacy compatibility
+	RegisterDecrypter(PKCS1v15())
+	_, registered = decrypters[pkcs1v15Algorithm]
+	assert.Check(t, registered,
+		"PKCS1v15 should be registerable for explicit opt-in")
+
+	// Clean up: remove from registry
+	delete(decrypters, pkcs1v15Algorithm)
+}
+
 /*
 func TestAES256CBC(t *testing.T) {
 	RandReader = rand.New(rand.NewSource(0)) // deterministic random numbers for tests

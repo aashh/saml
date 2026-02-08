@@ -1212,6 +1212,41 @@ func TestSPInvalidAssertions(t *testing.T) {
 	assertion = Assertion{}
 	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
 
+	// SubjectConfirmationData.NotBefore in the future should be rejected
+	assertion.Subject.SubjectConfirmations[0].SubjectConfirmationData.NotBefore = TimeNow().Add(time.Hour)
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion SubjectConfirmationData is not yet valid"))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// SubjectConfirmationData.NotBefore zero value should be accepted (backward compat)
+	assertion.Subject.SubjectConfirmations[0].SubjectConfirmationData.NotBefore = time.Time{}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// SubjectConfirmationData.NotBefore in the past should be accepted
+	assertion.Subject.SubjectConfirmations[0].SubjectConfirmationData.NotBefore = TimeNow().Add(-time.Hour)
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// SubjectConfirmationData.NotBefore within clock skew should be accepted
+	assertion.Subject.SubjectConfirmations[0].SubjectConfirmationData.NotBefore = TimeNow().Add(MaxClockSkew - time.Second)
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// SubjectConfirmationData.NotBefore just past clock skew should be rejected
+	assertion.Subject.SubjectConfirmations[0].SubjectConfirmationData.NotBefore = TimeNow().Add(MaxClockSkew + time.Second)
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, "assertion SubjectConfirmationData is not yet valid"))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
 	assertion.Conditions.NotBefore = TimeNow().Add(time.Hour)
 	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
 	assert.Check(t, is.Error(err, "assertion Conditions is not yet valid"))

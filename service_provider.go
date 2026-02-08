@@ -1219,6 +1219,10 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 		if subjectConfirmation.SubjectConfirmationData.Recipient != sp.AcsURL.String() {
 			return fmt.Errorf("assertion SubjectConfirmation Recipient is not %s", sp.AcsURL.String())
 		}
+		if !subjectConfirmation.SubjectConfirmationData.NotBefore.IsZero() &&
+			subjectConfirmation.SubjectConfirmationData.NotBefore.Add(-MaxClockSkew).After(now) {
+			return fmt.Errorf("assertion SubjectConfirmationData is not yet valid")
+		}
 		if subjectConfirmation.SubjectConfirmationData.NotOnOrAfter.Add(MaxClockSkew).Before(now) {
 			return fmt.Errorf("assertion SubjectConfirmationData is expired")
 		}

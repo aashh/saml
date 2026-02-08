@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -32,7 +33,7 @@ func CreateLink(w http.ResponseWriter, r *http.Request) {
 	account := r.Header.Get("X-Remote-User")
 
 	randomness := make([]byte, 8)
-	if _, err := r.Body.Read(randomness); err != nil {
+	if _, err := rand.Read(randomness); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

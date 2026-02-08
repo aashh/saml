@@ -24,6 +24,13 @@ type Options struct {
 	Certificate       *x509.Certificate
 	Store             Store
 	LoginFormTemplate *template.Template
+
+	// AdminMiddleware, if set, is applied to all admin API endpoints
+	// (users, services, sessions, shortcuts). Use this to require
+	// authentication on management endpoints. If nil, admin endpoints
+	// are served without any access control — only appropriate for
+	// development and testing.
+	AdminMiddleware func(http.Handler) http.Handler
 }
 
 // Server represents an IDP server. The server provides the following URLs:
@@ -44,6 +51,7 @@ type Server struct {
 	IDP               saml.IdentityProvider // the underlying IDP
 	Store             Store                 // the data store
 	LoginFormTemplate *template.Template
+	AdminMiddleware   func(http.Handler) http.Handler
 }
 
 // New returns a new Server
@@ -75,6 +83,7 @@ func New(opts Options) (*Server, error) {
 		logger:            logr,
 		Store:             opts.Store,
 		LoginFormTemplate: opts.LoginFormTemplate,
+		AdminMiddleware:   opts.AdminMiddleware,
 	}
 
 	s.IDP.SessionProvider = s
@@ -107,23 +116,33 @@ func (s *Server) InitializeHTTP() {
 	mux.HandleFunc("/login/{shortcut}", s.HandleIDPInitiated)
 	mux.HandleFunc("/login/{shortcut}/{suffix}", s.HandleIDPInitiated)
 
-	mux.HandleFunc("GET /services/", s.HandleListServices)
-	mux.HandleFunc("GET /services/{id}", s.HandleGetService)
-	mux.HandleFunc("PUT /services/{id}", s.HandlePutService)
-	mux.HandleFunc("POST /services/{id}", s.HandlePutService)
-	mux.HandleFunc("DELETE /services/{id}", s.HandleDeleteService)
+	admin := s.adminHandler
 
-	mux.HandleFunc("GET /users/", s.HandleListUsers)
-	mux.HandleFunc("GET /users/{id}", s.HandleGetUser)
-	mux.HandleFunc("PUT /users/{id}", s.HandlePutUser)
-	mux.HandleFunc("DELETE /users/{id}", s.HandleDeleteUser)
+	mux.Handle("GET /services/", admin(http.HandlerFunc(s.HandleListServices)))
+	mux.Handle("GET /services/{id}", admin(http.HandlerFunc(s.HandleGetService)))
+	mux.Handle("PUT /services/{id}", admin(http.HandlerFunc(s.HandlePutService)))
+	mux.Handle("POST /services/{id}", admin(http.HandlerFunc(s.HandlePutService)))
+	mux.Handle("DELETE /services/{id}", admin(http.HandlerFunc(s.HandleDeleteService)))
 
-	mux.HandleFunc("GET /sessions/", s.HandleListSessions)
-	mux.HandleFunc("GET /sessions/{id}", s.HandleGetSession)
-	mux.HandleFunc("DELETE /sessions/{id}", s.HandleDeleteSession)
+	mux.Handle("GET /users/", admin(http.HandlerFunc(s.HandleListUsers)))
+	mux.Handle("GET /users/{id}", admin(http.HandlerFunc(s.HandleGetUser)))
+	mux.Handle("PUT /users/{id}", admin(http.HandlerFunc(s.HandlePutUser)))
+	mux.Handle("DELETE /users/{id}", admin(http.HandlerFunc(s.HandleDeleteUser)))
 
-	mux.HandleFunc("GET /shortcuts/", s.HandleListShortcuts)
-	mux.HandleFunc("GET /shortcuts/{id}", s.HandleGetShortcut)
-	mux.HandleFunc("PUT /shortcuts/{id}", s.HandlePutShortcut)
-	mux.HandleFunc("DELETE /shortcuts/{id}", s.HandleDeleteShortcut)
+	mux.Handle("GET /sessions/", admin(http.HandlerFunc(s.HandleListSessions)))
+	mux.Handle("GET /sessions/{id}", admin(http.HandlerFunc(s.HandleGetSession)))
+	mux.Handle("DELETE /sessions/{id}", admin(http.HandlerFunc(s.HandleDeleteSession)))
+
+	mux.Handle("GET /shortcuts/", admin(http.HandlerFunc(s.HandleListShortcuts)))
+	mux.Handle("GET /shortcuts/{id}", admin(http.HandlerFunc(s.HandleGetShortcut)))
+	mux.Handle("PUT /shortcuts/{id}", admin(http.HandlerFunc(s.HandlePutShortcut)))
+	mux.Handle("DELETE /shortcuts/{id}", admin(http.HandlerFunc(s.HandleDeleteShortcut)))
+}
+
+// adminHandler returns the AdminMiddleware if configured, otherwise a no-op passthrough.
+func (s *Server) adminHandler(h http.Handler) http.Handler {
+	if s.AdminMiddleware != nil {
+		return s.AdminMiddleware(h)
+	}
+	return h
 }

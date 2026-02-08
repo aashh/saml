@@ -114,6 +114,72 @@ func NewServerTest(t *testing.T) *ServerTest {
 	return &test
 }
 
+func TestAdminMiddlewareProtectsEndpoints(t *testing.T) {
+	test := NewServerTest(t)
+
+	// Reconfigure with an admin middleware that rejects all requests
+	test.Server.AdminMiddleware = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-Admin-Token") != "secret" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+	test.Server.InitializeHTTP()
+
+	// Admin endpoints should be rejected without the token
+	adminPaths := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/users/"},
+		{"GET", "/users/alice"},
+		{"PUT", "/users/alice"},
+		{"DELETE", "/users/alice"},
+		{"GET", "/services/"},
+		{"GET", "/services/sp1"},
+		{"PUT", "/services/sp1"},
+		{"POST", "/services/sp1"},
+		{"DELETE", "/services/sp1"},
+		{"GET", "/sessions/"},
+		{"GET", "/sessions/sess1"},
+		{"DELETE", "/sessions/sess1"},
+		{"GET", "/shortcuts/"},
+		{"GET", "/shortcuts/sc1"},
+		{"PUT", "/shortcuts/sc1"},
+		{"DELETE", "/shortcuts/sc1"},
+	}
+
+	for _, tc := range adminPaths {
+		t.Run(tc.method+" "+tc.path+" without token", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r, _ := http.NewRequest(tc.method, "https://idp.example.com"+tc.path, nil)
+			test.Server.ServeHTTP(w, r)
+			assert.Check(t, is.Equal(http.StatusUnauthorized, w.Code),
+				"%s %s should be rejected without admin token", tc.method, tc.path)
+		})
+	}
+
+	// Non-admin endpoints should still be accessible
+	t.Run("metadata is not protected", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		r, _ := http.NewRequest("GET", "https://idp.example.com/metadata", nil)
+		test.Server.ServeHTTP(w, r)
+		assert.Check(t, is.Equal(http.StatusOK, w.Code))
+	})
+
+	// Admin endpoints should work with the correct token
+	t.Run("admin endpoint with valid token", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		r, _ := http.NewRequest("GET", "https://idp.example.com/users/", nil)
+		r.Header.Set("X-Admin-Token", "secret")
+		test.Server.ServeHTTP(w, r)
+		assert.Check(t, is.Equal(http.StatusOK, w.Code))
+	})
+}
+
 func TestHTTPCanHandleMetadataRequest(t *testing.T) {
 	test := NewServerTest(t)
 	w := httptest.NewRecorder()

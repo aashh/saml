@@ -162,7 +162,9 @@ func init() {
 	RegisterDecrypter(AES128CBC)
 	RegisterDecrypter(AES192CBC)
 	RegisterDecrypter(AES256CBC)
-	RegisterDecrypter(TripleDES)
+	// TripleDES is not registered by default due to its small block size (64-bit)
+	// which makes it vulnerable to birthday attacks (Sweet32). To enable it for
+	// legacy interop: xmlenc.RegisterDecrypter(xmlenc.TripleDES)
 }
 
 func appendPadding(buf []byte, blockSize int) []byte {

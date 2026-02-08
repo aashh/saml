@@ -42,10 +42,17 @@ var (
 	digestMethods = map[string]DigestMethod{}
 )
 
-// RegisterDecrypter registers the specified decrypter to that it can be
+// RegisterDecrypter registers the specified decrypter so that it can be
 // used with Decrypt().
 func RegisterDecrypter(d Decrypter) {
 	decrypters[d.Algorithm()] = d
+}
+
+// UnregisterDecrypter removes the decrypter for the given algorithm URI.
+// This can be used to disable support for algorithms that are no longer
+// considered secure (e.g. TripleDES).
+func UnregisterDecrypter(algorithm string) {
+	delete(decrypters, algorithm)
 }
 
 // RegisterDigestMethod registers the specified digest method to that it can be

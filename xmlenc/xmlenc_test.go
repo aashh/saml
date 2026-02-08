@@ -71,6 +71,38 @@ func TestDataAES128(t *testing.T) {
 	})
 }
 
+func TestTripleDESNotRegisteredByDefault(t *testing.T) {
+	tripledesAlgorithm := "http://www.w3.org/2001/04/xmlenc#tripledes-cbc"
+
+	// Verify TripleDES is NOT in the default decrypter registry
+	_, registered := decrypters[tripledesAlgorithm]
+	assert.Check(t, !registered,
+		"TripleDES should not be registered by default (Sweet32 vulnerability)")
+
+	// Verify AES ciphers ARE still registered
+	aesAlgorithms := []string{
+		"http://www.w3.org/2001/04/xmlenc#aes128-cbc",
+		"http://www.w3.org/2001/04/xmlenc#aes192-cbc",
+		"http://www.w3.org/2001/04/xmlenc#aes256-cbc",
+	}
+	for _, alg := range aesAlgorithms {
+		_, registered := decrypters[alg]
+		assert.Check(t, registered, "AES algorithm %s should be registered by default", alg)
+	}
+
+	// Verify explicit registration re-enables it
+	RegisterDecrypter(TripleDES)
+	_, registered = decrypters[tripledesAlgorithm]
+	assert.Check(t, registered,
+		"TripleDES should be registerable for explicit opt-in")
+
+	// Clean up
+	UnregisterDecrypter(tripledesAlgorithm)
+	_, registered = decrypters[tripledesAlgorithm]
+	assert.Check(t, !registered,
+		"UnregisterDecrypter should remove the algorithm")
+}
+
 /*
 func TestAES256CBC(t *testing.T) {
 	RandReader = rand.New(rand.NewSource(0)) // deterministic random numbers for tests

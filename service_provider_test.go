@@ -1234,6 +1234,70 @@ func TestSPInvalidAssertions(t *testing.T) {
 	assertion.Conditions.AudienceRestrictions = []AudienceRestriction{}
 	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
 	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// AuthnContext validation: no RequestedAuthnContext => no check
+	s.RequestedAuthnContext = nil
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// AuthnContext validation: matching RequestedAuthnContext => accepted
+	s.RequestedAuthnContext = &RequestedAuthnContext{
+		Comparison:           "exact",
+		AuthnContextClassRef: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// AuthnContext validation: mismatched RequestedAuthnContext => rejected
+	s.RequestedAuthnContext = &RequestedAuthnContext{
+		Comparison:           "exact",
+		AuthnContextClassRef: "urn:oasis:names:tc:SAML:2.0:ac:classes:X509",
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err,
+		`assertion AuthnContext ClassRef "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport" does not match requested "urn:oasis:names:tc:SAML:2.0:ac:classes:X509"`))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// AuthnContext validation: nil AuthnContextClassRef in assertion => rejected
+	s.RequestedAuthnContext = &RequestedAuthnContext{
+		Comparison:           "exact",
+		AuthnContextClassRef: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
+	}
+	assertion.AuthnStatements[0].AuthnContext.AuthnContextClassRef = nil
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err,
+		`assertion AuthnContext ClassRef "" does not match requested "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"`))
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// AuthnContext validation: empty RequestedAuthnContext ClassRef => no check
+	s.RequestedAuthnContext = &RequestedAuthnContext{
+		Comparison:           "exact",
+		AuthnContextClassRef: "",
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, err)
+	s.RequestedAuthnContext = nil
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
+
+	// AuthnContext validation: unsupported Comparison value => rejected
+	s.RequestedAuthnContext = &RequestedAuthnContext{
+		Comparison:           "minimum",
+		AuthnContextClassRef: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
+	}
+	err = s.validateAssertion(&assertion, []string{"id-9e61753d64e928af5a7a341a97f420c9"}, TimeNow())
+	assert.Check(t, is.Error(err, `unsupported RequestedAuthnContext Comparison "minimum" (only "exact" is supported)`))
+	s.RequestedAuthnContext = nil
+	assertion = Assertion{}
+	assert.Check(t, xml.Unmarshal(assertionBuf, &assertion))
 }
 
 func TestXswPermutationOneIsRejected(t *testing.T) {

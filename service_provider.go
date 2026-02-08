@@ -1233,6 +1233,11 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	if err := sp.validateAudienceRestriction(assertion); err != nil {
 		return err
 	}
+
+	if err := sp.validateAuthnContext(assertion); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1255,6 +1260,48 @@ func (sp *ServiceProvider) validateAudienceRestriction(assertion *Assertion) err
 		return fmt.Errorf("assertion Conditions AudienceRestriction does not contain %q", audience)
 	}
 	return nil
+}
+
+// validateAuthnContext checks that the assertion's AuthnContextClassRef matches
+// what the SP requested in RequestedAuthnContext. If RequestedAuthnContext is
+// nil, no validation is performed. For "exact" (or empty) Comparison, the
+// AuthnContextClassRef must exactly equal the requested value.
+func (sp *ServiceProvider) validateAuthnContext(assertion *Assertion) error {
+	if sp.RequestedAuthnContext == nil {
+		return nil
+	}
+
+	comparison := sp.RequestedAuthnContext.Comparison
+	if comparison != "" && comparison != "exact" {
+		return fmt.Errorf("unsupported RequestedAuthnContext Comparison %q (only \"exact\" is supported)", comparison)
+	}
+
+	requestedClassRef := sp.RequestedAuthnContext.AuthnContextClassRef
+	if requestedClassRef == "" {
+		return nil
+	}
+
+	for _, authnStatement := range assertion.AuthnStatements {
+		if authnStatement.AuthnContext.AuthnContextClassRef == nil {
+			continue
+		}
+		if authnStatement.AuthnContext.AuthnContextClassRef.Value == requestedClassRef {
+			return nil
+		}
+	}
+	return fmt.Errorf("assertion AuthnContext ClassRef %q does not match requested %q",
+		authnContextClassRefValue(assertion), requestedClassRef)
+}
+
+// authnContextClassRefValue returns the first AuthnContextClassRef value in
+// the assertion, or "" if none is present.
+func authnContextClassRefValue(assertion *Assertion) string {
+	for _, authnStatement := range assertion.AuthnStatements {
+		if authnStatement.AuthnContext.AuthnContextClassRef != nil {
+			return authnStatement.AuthnContext.AuthnContextClassRef.Value
+		}
+	}
+	return ""
 }
 
 var errSignatureElementNotPresent = errors.New("signature element not present")

@@ -1,6 +1,7 @@
 package samlidp
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,7 +32,7 @@ func TestSessionsCrud(t *testing.T) {
 	r.Header.Set("Content-type", "application/x-www-form-urlencoded")
 	test.Server.ServeHTTP(w, r)
 	assert.Check(t, is.Equal(http.StatusOK, w.Code))
-	assert.Check(t, is.Equal("session=AAIEBggKDA4QEhQWGBocHiAiJCYoKiwuMDI0Njg6PD4=; Path=/; Max-Age=3600; HttpOnly; Secure",
+	assert.Check(t, is.Equal("session=AAIEBggKDA4QEhQWGBocHiAiJCYoKiwuMDI0Njg6PD4=; Path=/; Max-Age=3600; HttpOnly; SameSite=Lax",
 		w.Header().Get("Set-Cookie")))
 	assert.Check(t, is.Equal("{\"ID\":\"AAIEBggKDA4QEhQWGBocHiAiJCYoKiwuMDI0Njg6PD4=\",\"CreateTime\":\"2015-12-01T01:57:09Z\",\"ExpireTime\":\"2015-12-01T02:57:09Z\",\"Index\":\"40424446484a4c4e50525456585a5c5e60626466686a6c6e70727476787a7c7e\",\"NameID\":\"\",\"NameIDFormat\":\"\",\"SubjectID\":\"\",\"Groups\":null,\"UserName\":\"alice\",\"UserEmail\":\"\",\"UserCommonName\":\"\",\"UserSurname\":\"\",\"UserGivenName\":\"\",\"UserScopedAffiliation\":\"\",\"CustomAttributes\":null}\n",
 		w.Body.String()))
@@ -86,4 +87,29 @@ func TestSessionsCrud(t *testing.T) {
 		w.Header().Get("Content-type")))
 	assert.Check(t, is.Equal(`<html><p>Invalid username or password</p><form method="post" action="https://idp.example.com/login"><input type="text" name="user" placeholder="user" value="" /><input type="password" name="password" placeholder="password" value="" /><input type="hidden" name="SAMLRequest" value="" /><input type="hidden" name="RelayState" value="" /><input type="submit" value="Log In" /></form></html>`,
 		w.Body.String()))
+}
+
+func TestSessionCookieSecureOverTLS(t *testing.T) {
+	// Regression test for issue #16: The Secure flag should be set when
+	// the request arrives over TLS (r.TLS != nil), and SameSite=Lax
+	// should always be present.
+	test := NewServerTest(t)
+
+	w := httptest.NewRecorder()
+	r, _ := http.NewRequest("PUT", "https://idp.example.com/users/alice",
+		strings.NewReader(`{"name": "alice", "password": "hunter2"}`+"\n"))
+	test.Server.ServeHTTP(w, r)
+	assert.Check(t, is.Equal(http.StatusNoContent, w.Code))
+
+	w = httptest.NewRecorder()
+	r, _ = http.NewRequest("POST", "https://idp.example.com/login",
+		strings.NewReader("user=alice&password=hunter2"))
+	r.Header.Set("Content-type", "application/x-www-form-urlencoded")
+	r.TLS = &tls.ConnectionState{} // simulate TLS connection
+	test.Server.ServeHTTP(w, r)
+	assert.Check(t, is.Equal(http.StatusOK, w.Code))
+
+	cookie := w.Header().Get("Set-Cookie")
+	assert.Check(t, is.Contains(cookie, "Secure"), "cookie should have Secure flag over TLS")
+	assert.Check(t, is.Contains(cookie, "SameSite=Lax"), "cookie should have SameSite=Lax")
 }

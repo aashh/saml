@@ -1293,30 +1293,11 @@ func (sp *ServiceProvider) validateSignature(el *etree.Element) error {
 		return fmt.Errorf("cannot validate signature on %s: saml config not set up properly, specify either idp metadata url, fingerprints or actual certificate", el.Tag)
 	}
 
-	certificateStore := dsig.MemoryX509CertificateStore{
-		Roots: certs,
-	}
-
-	validationContext := dsig.NewDefaultValidationContext(&certificateStore)
-	validationContext.IdAttribute = "ID"
-	if Clock != nil {
-		validationContext.Clock = Clock
-	}
-
-	// Some SAML responses contain a RSAKeyValue element. One of two things is happening here:
-	//
-	// (1) We're getting something signed by a key we already know about -- the public key
-	//     of the signing cert provided in the metadata.
-	// (2) We're getting something signed by a key we *don't* know about, and which we have
-	//     no ability to verify.
-	//
-	// The best course of action is to just remove the KeyInfo so that dsig falls back to
-	// verifying against the public key provided in the metadata.
-	if el.FindElement("./Signature/KeyInfo/X509Data/X509Certificate") == nil {
-		if sigEl := el.FindElement("./Signature"); sigEl != nil {
-			if keyInfo := sigEl.FindElement("KeyInfo"); keyInfo != nil {
-				sigEl.RemoveChild(keyInfo)
-			}
+	// Strip KeyInfo from the Signature element so that signature validation
+	// relies solely on the metadata-provided certificates.
+	if sigEl := el.FindElement("./Signature"); sigEl != nil {
+		if keyInfo := sigEl.FindElement("KeyInfo"); keyInfo != nil {
+			sigEl.RemoveChild(keyInfo)
 		}
 	}
 
@@ -1333,15 +1314,36 @@ func (sp *ServiceProvider) validateSignature(el *etree.Element) error {
 		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
 	}
 
-	if sp.SignatureVerifier != nil {
-		return sp.SignatureVerifier.VerifySignature(validationContext, el)
+	// Try each trusted certificate individually. goxmldsig only auto-selects
+	// a certificate from the store when there is exactly one root, so when
+	// metadata provides multiple signing certs we must try each one.
+	var lastErr error
+	for _, cert := range certs {
+		certificateStore := dsig.MemoryX509CertificateStore{
+			Roots: []*x509.Certificate{cert},
+		}
+		validationContext := dsig.NewDefaultValidationContext(&certificateStore)
+		validationContext.IdAttribute = "ID"
+		if Clock != nil {
+			validationContext.Clock = Clock
+		}
+
+		if sp.SignatureVerifier != nil {
+			err := sp.SignatureVerifier.VerifySignature(validationContext, el)
+			if err == nil {
+				return nil
+			}
+			lastErr = err
+		} else {
+			_, err := validationContext.Validate(el)
+			if err == nil {
+				return nil
+			}
+			lastErr = err
+		}
 	}
 
-	if _, err := validationContext.Validate(el); err != nil {
-		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
-	}
-
-	return nil
+	return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, lastErr)
 }
 
 // SignLogoutRequest adds the `Signature` element to the `LogoutRequest`.

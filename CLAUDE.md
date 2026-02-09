@@ -43,7 +43,23 @@ Submission order and pacing: `github-archive/pr-submission-plan.md`
 
 ## Local files
 
-`github-archive/` is gitignored. It contains:
+`CLAUDE.md` and `github-archive/` live in the worktree but are excluded from all
+branches via `.git/info/exclude`. They are version-controlled on the orphan `meta`
+branch (no shared history with main). To update them:
+
+```
+git stash        # if needed
+git checkout meta
+# edit files
+git add -A && git commit -m "update meta"
+git checkout main
+git stash pop    # if needed
+```
+
+After switching back, the files stay in the worktree because `.git/info/exclude`
+tells git not to touch them.
+
+Contents of `github-archive/`:
 - `pr-submission-plan.md` — wave ordering, PR status, pacing rules
 - `style.md` — writing style for issues, PRs, and comments
 - `issues/` — backup of all 29 fork issues (JSON + markdown)

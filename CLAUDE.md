@@ -48,16 +48,21 @@ branches via `.git/info/exclude`. They are version-controlled on the orphan `met
 branch (no shared history with main). To update them:
 
 ```
-git stash        # if needed
 git checkout meta
 # edit files
 git add -A && git commit -m "update meta"
+git push origin meta
 git checkout main
-git stash pop    # if needed
 ```
 
-After switching back, the files stay in the worktree because `.git/info/exclude`
-tells git not to touch them.
+Switching branches wipes these files from the worktree. Restore after checkout:
+```
+git show meta:CLAUDE.md > CLAUDE.md
+mkdir -p github-archive/issues
+git ls-tree --name-only -r meta -- github-archive/ | while read f; do
+  mkdir -p "$(dirname "$f")" && git show "meta:$f" > "$f"
+done
+```
 
 Contents of `github-archive/`:
 - `pr-submission-plan.md` — wave ordering, PR status, pacing rules
